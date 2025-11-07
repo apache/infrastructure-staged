@@ -5,7 +5,8 @@ Description=Web Site Staging Daemon
 Type=simple
 User=svnwc
 Group=svnwc
-ExecStart=/usr/bin/python3 /usr/local/etc/staged/staged.py
+WorkingDirectory=/opt/staged
+ExecStart=/usr/local/bin/uv run staged.py
 
 [Install]
 WantedBy=multi-user.target
