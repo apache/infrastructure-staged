@@ -270,6 +270,9 @@ class deploy(threading.Thread):
         threading.Thread.__init__(self)
         self.svnconfig: dict = {}
         if os.path.isfile(SVNWCSUB_CFGFILE):
+            syslog.syslog(
+                syslog.LOG_INFO, "Found svnwcsub.conf file, loading for svn tracking"
+            )
             self._svnwcsub = configparser.ConfigParser()
             self._svnwcsub.read(SVNWCSUB_CFGFILE)
             self.svnconfig = {
