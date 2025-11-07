@@ -1,0 +1,15 @@
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
+
+# Post-deploy files
+__pycache__
+apptoken.txt
+*.zip
+poetry.lock
+
+# IDEs
+.idea
+
