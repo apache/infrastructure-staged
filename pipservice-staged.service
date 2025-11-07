@@ -1,0 +1,11 @@
+[Unit]
+Description=Web Site Staging Daemon
+
+[Service]
+Type=simple
+User=svnwc
+Group=svnwc
+ExecStart=/usr/bin/python3 /usr/local/etc/staged/staged.py
+
+[Install]
+WantedBy=multi-user.target
