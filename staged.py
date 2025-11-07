@@ -268,21 +268,6 @@ class deploy(threading.Thread):
             time.sleep(5)
 
 
-def read_chunk(req):
-    """Processor func for reading "lines" (http chunks)"""
-    while True:
-        try:
-            line = req.readline().strip()
-            if line:
-                yield line
-            else:
-                break
-        except Exception as info:
-            syslog.syslog(syslog.LOG_WARNING, "Error reading from stream: %s" % info)
-            break
-    return
-
-
 async def listen(deployer: deploy):
     """PubSub listener"""
     last = time.time()
