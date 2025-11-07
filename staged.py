@@ -2,7 +2,6 @@
 """Staging/live web site pubsubber for ASF git repos"""
 import asyncio
 import configparser
-import json
 import os
 import re
 import shutil
@@ -11,7 +10,6 @@ import subprocess
 import syslog
 import threading
 import time
-import urllib.request
 
 import asfpy.pubsub
 import requests
@@ -131,6 +129,32 @@ def do_git_pull(path, branch):
         )
 
 
+def do_svn_up(path):
+    """Does a simple svn up from a deploy dir, syslog if it works or not"""
+    os.chdir(path)
+    try:
+        subprocess.check_output(
+            (SVN_CMD, "up"),
+            stderr=subprocess.STDOUT,
+            timeout=CHECKOUT_TIMEOUT,
+        )
+        syslog.syslog(
+            syslog.LOG_INFO, "Successfully completed `svn up` into %s" % path
+        )
+    except subprocess.CalledProcessError as e:
+        syslog.syslog(
+            syslog.LOG_WARNING,
+            "Command `svn up` failed in %s: %s" % (path, e.output),
+            )
+        return
+    except subprocess.TimeoutExpired:
+        syslog.syslog(
+            syslog.LOG_WARNING, "Could not run svn up: operation timed out"
+        )
+        return
+
+
+
 def deploy_site(deploydir, source, branch, committer, deploytype="website"):
     """Deploys a git repo to a staging/live site"""
 
@@ -151,7 +175,7 @@ def deploy_site(deploydir, source, branch, committer, deploytype="website"):
             % deploydir,
         )
         return
-    if not source.startswith(
+    if deploytype != "svn" and not source.startswith(
         "https://gitbox.apache.org/repos/asf/"
     ) and not source.startswith("https://github.com/apache/"):
         syslog.syslog(syslog.LOG_WARNING, "Invalid source URL, %s!" % source)
@@ -170,11 +194,18 @@ def deploy_site(deploydir, source, branch, committer, deploytype="website"):
         )
         # If $path/.svn exists, it's an old svnwcsub checkout, clobber it.
         if os.path.isdir(os.path.join(path, ".svn")):
-            syslog.syslog(
-                syslog.LOG_WARNING,
-                "%s appears to be an old subversion directory, clobbering it!" % path,
-            )
-            checkout_git_repo(path, source, branch)
+            if deploytype == "svn":  # we want svn anyway, svn up
+                syslog.syslog(
+                    syslog.LOG_WARNING,
+                    "%s is a subversion directory, running svn up to update" % path,
+                    )
+                do_svn_up(path)
+            else:
+                syslog.syslog(
+                    syslog.LOG_WARNING,
+                    "%s appears to be an old subversion directory, clobbering it!" % path,
+                )
+                checkout_git_repo(path, source, branch)
             return
         os.chdir(path)
         try:
@@ -221,12 +252,17 @@ def deploy_site(deploydir, source, branch, committer, deploytype="website"):
                 syslog.LOG_INFO, "Source and branch match on-disk, doing git pull"
             )
             do_git_pull(path, branch)
-    # Otherwise, do fresh checkout
+    # Otherwise, do fresh checkout if git, complain (for now) if svn
     else:
-        syslog.syslog(
-            syslog.LOG_INFO, "%s is a new staging dir, doing fresh checkout" % path
-        )
-        checkout_git_repo(path, source, branch)
+        if deploytype == "svn":
+            syslog.syslog(
+                syslog.LOG_INFO, "%s is a not an existing svn checkout, ignoring payload for now" % path
+            )
+        else:
+            syslog.syslog(
+                syslog.LOG_INFO, "%s is a new staging dir, doing fresh checkout" % path
+            )
+            checkout_git_repo(path, source, branch)
 
 
 class deploy(threading.Thread):
@@ -267,14 +303,50 @@ class deploy(threading.Thread):
                     )
             time.sleep(5)
 
+def common_parent(files: list):
+    """Given a list of files changed, figures out the parent (top-most) directory that contains all these commits"""
+    top_directory = "/"
+    for filename in files:
+        if top_directory == "/" or not filename.startswith(top_directory):
+            bits = os.path.split(filename)
+            for i in range(0, len(bits)-1):
+                tmp_path = os.path.join(bits[0], *bits[1:i]) + "/"
+                if all(fp.startswith(tmp_path) for fp in files):
+                    top_directory = tmp_path
+    return top_directory or "/"
+
+
 
 async def listen(deployer: deploy):
     """PubSub listener"""
-    last = time.time()
-    now = last
     async for payload in asfpy.pubsub.listen(PUBSUB_URL, timeout=30):
         try:
             expected_action = "staging" if not PUBLISH else "publish"
+            # svnpubsub -> publish conversion
+            if "commit" in payload and isinstance(payload["commit"], dict) and payload["commit"].get("type", "") == "svn":
+                commit = payload["commit"]
+                if commit.get("repository", "") in SVN_UUIDS:  # If this is from a repo we know of...
+                    svn_uuid = commit["repository"]
+                    svn_root = SVN_UUIDS.get(svn_uuid)
+                    cp = common_parent(commit.get("changed", []))
+                    svn_url = os.path.join(svn_root, cp)
+                    print(f"Found commit from {svn_url}...")
+                    if deployer.svnconfig:
+                        for target, url in deployer.svnconfig.get("track", {}).items():
+                            if svn_url.startswith(url) and target.startswith("/"):  #discard config default entries, infra and cms
+                                print(f"Found SVN match for {url} in {target}, faking a publish payload")
+                                project = "infra"
+                                if "/www/" in target:  # Infer project from path if possible
+                                    project = os.path.split(target)[1].replace(".apache.org", "")  # /www/commons.apache.org/foo -> commons
+                                payload = {
+                                    "publish": {
+                                        "project": project,
+                                        "source": svn_url,
+                                        "pusher": commit.get("committer", "root"),
+                                        "deploytype": "svn",
+                                        "target": target,
+                                    }
+                                }
             if expected_action in payload:
                 project = payload[expected_action].get("project")
                 source = payload[expected_action].get("source")
@@ -288,7 +360,7 @@ async def listen(deployer: deploy):
                 subdir = payload[expected_action].get("subdir", "")
                 deploytype = payload[expected_action].get("type", "website")
 
-                if deploytype not in ("website", "blog"):
+                if deploytype not in ("website", "blog", "svn"):
                     deploytype = "website"  # blog or website, nothing in between!
 
                 # Staging dir
