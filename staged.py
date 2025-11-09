@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Staging/live web site pubsubber for ASF git repos"""
+
 import asyncio
 import configparser
 import os
@@ -7,11 +8,13 @@ import re
 import shutil
 import socket
 import subprocess
-import syslog
 import threading
 import time
 
 import asfpy.pubsub
+import asfpy.syslog
+
+print = asfpy.syslog.Printer(stdout=True)
 import requests
 
 # UUIDs that correspond to our svn repos, for capturing svn pubsub events
@@ -53,8 +56,7 @@ def purge_site(hostname, svcid=FASTLY_SVC_ID):
         },
         timeout=10,
     )
-    syslog.syslog(
-        syslog.LOG_INFO,
+    print(
         "Fastly PURGE request for %s responded: %s" % (hostname, rv.text),
     )
 
@@ -64,26 +66,20 @@ def checkout_git_repo(path, source, branch):
     os.chdir(ROOT_DIR)
     # If dir already exists as a dir, delete it first
     if os.path.isdir(path):
-        syslog.syslog(syslog.LOG_INFO, "Doing recursive delete of path %s" % path)
+        print("Doing recursive delete of path %s" % path)
         shutil.rmtree(path)
     # Try to pull in the repo, if it fails, just log it for now.
-    syslog.syslog(
-        syslog.LOG_INFO, "Checking out %s (%s) as %s..." % (source, branch, path)
-    )
+    print("Checking out %s (%s) as %s..." % (source, branch, path))
     try:
         subprocess.check_output(
             (GIT_CMD, "clone", "-b", branch, "--single-branch", source, path),
             timeout=CHECKOUT_TIMEOUT,
         )
-        syslog.syslog(syslog.LOG_INFO, "Checkout worked!")
+        print("Checkout worked!")
     except subprocess.CalledProcessError as e:
-        syslog.syslog(
-            syslog.LOG_WARNING, "Could not check out %s: %s" % (source, e.output)
-        )
+        print("Could not check out %s: %s" % (source, e.output))
     except subprocess.TimeoutExpired:
-        syslog.syslog(
-            syslog.LOG_WARNING, "Could not check out %s: operation timed out" % source
-        )
+        print("Could not check out %s: operation timed out" % source)
 
 
 def do_git_pull(path, branch):
@@ -96,34 +92,27 @@ def do_git_pull(path, branch):
             stderr=subprocess.STDOUT,
             timeout=CHECKOUT_TIMEOUT,
         )
-        syslog.syslog(
-            syslog.LOG_INFO, "Successfully completed `git fetch` into %s" % path
-        )
+        print("Successfully completed `git fetch` into %s" % path)
     except subprocess.CalledProcessError as e:
-        syslog.syslog(
-            syslog.LOG_WARNING,
+        print(
             "Command `git fetch origin %s` failed in %s: %s" % (branch, path, e.output),
         )
         return
     except subprocess.TimeoutExpired:
-        syslog.syslog(
-            syslog.LOG_WARNING, "Could not check out %s: operation timed out" % source
-        )
+        print("Could not check out %s: operation timed out" % source)
         return
     # Merge changes forcibly via git reset --hard origin/$branch.
     # This gets rid of those pesky merge conflicts when someone overrides history.
     try:
-        syslog.syslog(
-            syslog.LOG_INFO,
+        print(
             "Refreshing content in %s with: git reset --hard %s" % (path, branch),
         )
         subprocess.check_output(
             (GIT_CMD, "reset", "--hard", "origin/%s" % branch), stderr=subprocess.STDOUT
         )
-        syslog.syslog(syslog.LOG_INFO, "%s was successfully updated." % path)
+        print("%s was successfully updated." % path)
     except subprocess.CalledProcessError as e:
-        syslog.syslog(
-            syslog.LOG_WARNING,
+        print(
             "Command `git reset --hard origin/%s` failed in %s: %s"
             % (branch, path, e.output),
         )
@@ -138,21 +127,15 @@ def do_svn_up(path):
             stderr=subprocess.STDOUT,
             timeout=CHECKOUT_TIMEOUT,
         )
-        syslog.syslog(
-            syslog.LOG_INFO, "Successfully completed `svn up` into %s" % path
-        )
+        print("Successfully completed `svn up` into %s" % path)
     except subprocess.CalledProcessError as e:
-        syslog.syslog(
-            syslog.LOG_WARNING,
+        print(
             "Command `svn up` failed in %s: %s" % (path, e.output),
-            )
+        )
         return
     except subprocess.TimeoutExpired:
-        syslog.syslog(
-            syslog.LOG_WARNING, "Could not run svn up: operation timed out"
-        )
+        print("Could not run svn up: operation timed out")
         return
-
 
 
 def deploy_site(deploydir, source, branch, committer, deploytype="website"):
@@ -164,24 +147,25 @@ def deploy_site(deploydir, source, branch, committer, deploytype="website"):
     if (
         not re.match(r"^[-a-zA-Z0-9/.]+$", deploydir.replace(".apache.org", ""))
     ) or re.search(r"\.\.", deploydir):
-        syslog.syslog(syslog.LOG_WARNING, "Invalid deployment dir, %s!" % deploydir)
+        print("Invalid deployment dir, %s!" % deploydir)
         return
     if (
         os.path.abspath(path) != path
     ):  # /www/foo.a.o != /www/foo.a.o/../bar.a.o etc, disallow translations.
-        syslog.syslog(
-            syslog.LOG_WARNING,
+        print(
             "Invalid deployment dir, %s! (translated path diverges from base web site path)"
             % deploydir,
         )
         return
-    if deploytype != "svn" and not source.startswith(
-        "https://gitbox.apache.org/repos/asf/"
-    ) and not source.startswith("https://github.com/apache/"):
-        syslog.syslog(syslog.LOG_WARNING, "Invalid source URL, %s!" % source)
+    if (
+        deploytype != "svn"
+        and not source.startswith("https://gitbox.apache.org/repos/asf/")
+        and not source.startswith("https://github.com/apache/")
+    ):
+        print("Invalid source URL, %s!" % source)
         return
     if not branch:
-        syslog.syslog(syslog.LOG_WARNING, "Invalid branch, %s!" % branch)
+        print("Invalid branch, %s!" % branch)
         return
 
     # First check if staging dir is already being used.
@@ -189,21 +173,18 @@ def deploy_site(deploydir, source, branch, committer, deploytype="website"):
     if deploytype == "blog":  # blogs have a different root
         path = os.path.join(BLOGS_ROOT_DIR, deploydir.replace(".blog", ""))
     if os.path.isdir(path):
-        syslog.syslog(
-            syslog.LOG_INFO, "%s is an existing staging dir, checking it..." % path
-        )
+        print("%s is an existing staging dir, checking it..." % path)
         # If $path/.svn exists, it's an old svnwcsub checkout, clobber it.
         if os.path.isdir(os.path.join(path, ".svn")):
             if deploytype == "svn":  # we want svn anyway, svn up
-                syslog.syslog(
-                    syslog.LOG_WARNING,
+                print(
                     "%s is a subversion directory, running svn up to update" % path,
-                    )
+                )
                 do_svn_up(path)
             else:
-                syslog.syslog(
-                    syslog.LOG_WARNING,
-                    "%s appears to be an old subversion directory, clobbering it!" % path,
+                print(
+                    "%s appears to be an old subversion directory, clobbering it!"
+                    % path,
                 )
                 checkout_git_repo(path, source, branch)
             return
@@ -222,8 +203,7 @@ def deploy_site(deploydir, source, branch, committer, deploytype="website"):
                 .strip()
             )
         except subprocess.CalledProcessError as e:
-            syslog.syslog(
-                syslog.LOG_WARNING,
+            print(
                 "Could not determine original source of %s, clobbering: %s"
                 % (path, e.output),
             )
@@ -232,36 +212,30 @@ def deploy_site(deploydir, source, branch, committer, deploytype="website"):
             return
         # If different repo, clobber dir and re-checkout
         if csource != source:
-            syslog.syslog(
-                syslog.LOG_INFO,
+            print(
                 "Source repo for %s is not %s (%s), clobbering repo."
                 % (path, source, csource),
             )
             checkout_git_repo(path, source, branch)
         # Or if different branch, clobber as well
         elif cbranch != branch:
-            syslog.syslog(
-                syslog.LOG_INFO,
+            print(
                 "Source branch for %s is not %s (%s), clobbering repo."
                 % (path, branch, cbranch),
             )
             checkout_git_repo(path, source, branch)
         # Or it could be all good, just needs a pull
         else:
-            syslog.syslog(
-                syslog.LOG_INFO, "Source and branch match on-disk, doing git pull"
-            )
+            print("Source and branch match on-disk, doing git pull")
             do_git_pull(path, branch)
     # Otherwise, do fresh checkout if git, complain (for now) if svn
     else:
         if deploytype == "svn":
-            syslog.syslog(
-                syslog.LOG_INFO, "%s is a not an existing svn checkout, ignoring payload for now" % path
+            print(
+                "%s is a not an existing svn checkout, ignoring payload for now" % path
             )
         else:
-            syslog.syslog(
-                syslog.LOG_INFO, "%s is a new staging dir, doing fresh checkout" % path
-            )
+            print("%s is a new staging dir, doing fresh checkout" % path)
             checkout_git_repo(path, source, branch)
 
 
@@ -270,9 +244,7 @@ class deploy(threading.Thread):
         threading.Thread.__init__(self)
         self.svnconfig: dict = {}
         if os.path.isfile(SVNWCSUB_CFGFILE):
-            syslog.syslog(
-                syslog.LOG_INFO, "Found svnwcsub.conf file, loading for svn tracking"
-            )
+            print("Found svnwcsub.conf file, loading for svn tracking")
             self._svnwcsub = configparser.ConfigParser()
             self._svnwcsub.read(SVNWCSUB_CFGFILE)
             self.svnconfig = {
@@ -300,11 +272,11 @@ class deploy(threading.Thread):
                         if hostname == "www.apache.org":
                             purge_site("apache.org")  # Purge both www and non-www here.
                 except Exception as e:
-                    syslog.syslog(
-                        syslog.LOG_WARNING,
+                    print(
                         "BORK: Could not deploy to %s: %s" % (deploydir, e),
                     )
             time.sleep(5)
+
 
 def common_parent(files: list):
     """Given a list of files changed, figures out the parent (top-most) directory that contains all these commits"""
@@ -312,12 +284,11 @@ def common_parent(files: list):
     for filename in files:
         if top_directory == "/" or not filename.startswith(top_directory):
             bits = os.path.split(filename)
-            for i in range(0, len(bits)-1):
+            for i in range(0, len(bits) - 1):
                 tmp_path = os.path.join(bits[0], *bits[1:i]) + "/"
                 if all(fp.startswith(tmp_path) for fp in files):
                     top_directory = tmp_path
     return top_directory or "/"
-
 
 
 async def listen(deployer: deploy):
@@ -326,9 +297,15 @@ async def listen(deployer: deploy):
         try:
             expected_action = "staging" if not PUBLISH else "publish"
             # svnpubsub -> publish conversion
-            if "commit" in payload and isinstance(payload["commit"], dict) and payload["commit"].get("type", "") == "svn":
+            if (
+                "commit" in payload
+                and isinstance(payload["commit"], dict)
+                and payload["commit"].get("type", "") == "svn"
+            ):
                 commit = payload["commit"]
-                if commit.get("repository", "") in SVN_UUIDS:  # If this is from a repo we know of...
+                if (
+                    commit.get("repository", "") in SVN_UUIDS
+                ):  # If this is from a repo we know of...
                     svn_uuid = commit["repository"]
                     svn_root = SVN_UUIDS.get(svn_uuid)
                     cp = common_parent(commit.get("changed", []))
@@ -336,17 +313,25 @@ async def listen(deployer: deploy):
                     print(f"Found commit from {svn_url}...")
                     if deployer.svnconfig:
                         for target, url in deployer.svnconfig.get("track", {}).items():
-                            if svn_url.startswith(url) and target.startswith("/"):  #discard config default entries, infra and cms
-                                print(f"Found SVN match for {url} in {target}, faking a publish payload")
+                            if svn_url.startswith(url) and target.startswith(
+                                "/"
+                            ):  # discard config default entries, infra and cms
+                                print(
+                                    f"Found SVN match for {url} in {target}, faking a publish payload"
+                                )
                                 project = "infra"
-                                if "/www/" in target:  # Infer project from path if possible
-                                    project = os.path.split(target)[1].replace(".apache.org", "")  # /www/commons.apache.org/foo -> commons
+                                if (
+                                    "/www/" in target
+                                ):  # Infer project from path if possible
+                                    project = os.path.split(target)[1].replace(
+                                        ".apache.org", ""
+                                    )  # /www/commons.apache.org/foo -> commons
                                 payload = {
-                                    "publish": {
+                                    expected_action: {
                                         "project": project,
                                         "source": svn_url,
                                         "pusher": commit.get("committer", "root"),
-                                        "deploytype": "svn",
+                                        "type": "svn",
                                         "target": target,
                                     }
                                 }
@@ -382,8 +367,7 @@ async def listen(deployer: deploy):
                 if deploydir and source and branch:
                     root_deployment = deploydir  # Logged for purges
                     if subdir and re.match(r"^[-._a-zA-Z0-9/]+$", subdir):
-                        syslog.syslog(
-                            syslog.LOG_INFO,
+                        print(
                             "Extending deployment [%s] dir %s with subdir %s"
                             % (deploytype, deploydir, subdir),
                         )
@@ -394,8 +378,7 @@ async def listen(deployer: deploy):
                         deploydir = (
                             f"{project}.blog"  # purely for logging/queuing purposes
                         )
-                    syslog.syslog(
-                        syslog.LOG_INFO,
+                    print(
                         "Found deploy [%s] delivery for %s, deploying as %s"
                         % (deploytype, project, deploydir),
                     )
@@ -408,11 +391,9 @@ async def listen(deployer: deploy):
                     ]
 
         except ValueError as detail:
-            syslog.syslog(
-                syslog.LOG_WARNING, f"Bad JSON in payload from {PUBSUB_URL}: {detail}"
-            )
+            print(f"Bad JSON in payload from {PUBSUB_URL}: {detail}")
             continue
-    syslog.syslog(syslog.LOG_WARNING, f"Disconnected from {PUBSUB_URL}, reconnecting")
+    print(f"Disconnected from {PUBSUB_URL}, reconnecting")
 
 
 if __name__ == "__main__":
