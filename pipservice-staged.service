@@ -3,8 +3,8 @@ Description=Web Site Staging Daemon
 
 [Service]
 Type=simple
-User=svnwc
-Group=svnwc
+User=www-data
+Group=www-data
 WorkingDirectory=/opt/staged
 ExecStart=/usr/local/bin/uv run staged.py
 
