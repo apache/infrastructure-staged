@@ -31,7 +31,7 @@ SVNWCSUB_CFGFILE = "svnwcsub.conf"
 ROOT_DIR = "/www"
 BLOGS_ROOT_DIR = "/www/blogs"
 CHECKOUT_TIMEOUT = (
-    180  # Time out if git operation does not finish within 1 minute (60 seconds)
+    300  # Time out if git operation does not finish within five minutes (300 seconds)
 )
 # Staging on staging-vm, publishing on tlp-* boxes
 PUBLISH = True if "tlp" in socket.gethostname() else False
