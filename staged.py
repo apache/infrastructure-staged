@@ -120,6 +120,11 @@ def do_git_pull(path, branch):
 
 def do_svn_up(path):
     """Does a simple svn up from a deploy dir, syslog if it works or not"""
+    # Firstly, check that there isn't a .git repo here. We never touch dirs
+    # that are from git checkouts in do_svn_up.
+    if os.path.isdir(os.path.join(path, ".git")):
+        print(f"Not running svn up on {path}: {path}/.git exists")
+        return
     os.chdir(path)
     try:
         subprocess.check_output(
