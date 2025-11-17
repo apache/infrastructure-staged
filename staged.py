@@ -248,7 +248,12 @@ class deploy(threading.Thread):
             self._svnwcsub = configparser.ConfigParser()
             self._svnwcsub.read(SVNWCSUB_CFGFILE)
             self.svnconfig = {
-                k: dict(self._svnwcsub.items(k)) for k in self._svnwcsub.sections()
+                k: {
+                    xk: xv
+                    for xk, xv in self._svnwcsub.items(k)
+                    if xk not in self._svnwcsub.defaults()
+                }
+                for k in self._svnwcsub.sections()
             }
 
     def run(self):
