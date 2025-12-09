@@ -273,12 +273,14 @@ class deploy(threading.Thread):
                     deploy_site(deploydir, source, branch, committer, deploytype)
                     if PUBLISH and FASTLY_API_KEY:
                         if deploytype == "blog":
-                            real_hostname = deploydir.replace(".blog", "")
+                            # if blog, foo.apache.org turns into foo.blog.apache.org
+                            real_hostname = deploydir.replace(".apache.org", "") + ".blog.apache.org"
                             purge_site(
-                                f"{real_hostname}.blog.apache.org",
+                                real_hostname,
                                 svcid=FASTLY_BLOGS_SVC_ID,
-                            )  # purge blog.$project.a.o
-                        purge_site(hostname)  # purge $project.a.o
+                            )  # purge $project.blog.a.o
+                        else:
+                            purge_site(hostname)  # purge $project.a.o
                         if hostname == "www.apache.org":
                             purge_site("apache.org")  # Purge both www and non-www here.
                 except Exception as e:
@@ -381,13 +383,7 @@ async def listen(deployer: deploy):
                             "Extending deployment [%s] dir %s with subdir %s"
                             % (deploytype, deploydir, subdir),
                         )
-                        deploydir = os.path.join(deploydir, subdir)
-                    if (
-                        deploytype == "blog"
-                    ):  # blogs are published under /www/blogs/$project/
-                        deploydir = (
-                            f"{project}.blog"  # purely for logging/queuing purposes
-                        )
+                        deploydir = os.path.join(deploydir, subdir)                        
                     print(
                         "Found deploy [%s] delivery for %s, deploying as %s"
                         % (deploytype, project, deploydir),
