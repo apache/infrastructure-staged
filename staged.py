@@ -344,7 +344,7 @@ async def listen(deployer: deploy):
                                         "source": svn_url,
                                         "pusher": commit.get("committer", "root"),
                                         "type": "svn",
-                                        "target": target,
+                                        "target": target.rstrip("/"),  # strip trailing slashes from svnwcsub.conf 
                                     }
                                 }
             if expected_action in payload:
