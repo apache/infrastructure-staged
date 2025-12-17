@@ -274,7 +274,10 @@ class deploy(threading.Thread):
                     if PUBLISH and FASTLY_API_KEY:
                         if deploytype == "blog":
                             # if blog, foo.apache.org turns into foo.blog.apache.org
-                            real_hostname = deploydir.replace(".apache.org", "") + ".blog.apache.org"
+                            real_hostname = (
+                                deploydir.replace(".apache.org", "")
+                                + ".blog.apache.org"
+                            )
                             purge_site(
                                 real_hostname,
                                 svcid=FASTLY_BLOGS_SVC_ID,
@@ -320,33 +323,41 @@ async def listen(deployer: deploy):
                 ):  # If this is from a repo we know of...
                     svn_uuid = commit["repository"]
                     svn_root = SVN_UUIDS.get(svn_uuid)
-                    cp = common_parent(commit.get("changed", []))
-                    svn_url = os.path.join(svn_root, cp)
-                    print(f"Found commit from {svn_url}...")
-                    if deployer.svnconfig:
+                    if deployer.svnconfig:  # If svn polling is enabled..
+                        # For each changed file, check if it is contained within a directory we are tracking
+                        # Tracking URLs are listed in order of most specific URL first, so we should be free
+                        # to break after the first (most specific) match.
                         for target, url in deployer.svnconfig.get("track", {}).items():
-                            if svn_url.startswith(url) and target.startswith(
-                                "/"
-                            ):  # discard config default entries, infra and cms
-                                print(
-                                    f"Found SVN match for {url} in {target}, faking a publish payload"
-                                )
-                                project = "infra"
-                                if (
-                                    "/www/" in target
-                                ):  # Infer project from path if possible
-                                    project = os.path.split(target)[1].replace(
-                                        ".apache.org", ""
-                                    )  # /www/commons.apache.org/foo -> commons
-                                payload = {
-                                    expected_action: {
-                                        "project": project,
-                                        "source": svn_url,
-                                        "pusher": commit.get("committer", "root"),
-                                        "type": "svn",
-                                        "target": target.rstrip("/"),  # strip trailing slashes from svnwcsub.conf 
+                            found_match = False
+                            for filepath in commit.get("changed", {}).keys():
+                                svn_url = os.path.join(svn_root, filepath)
+                                if svn_url.startswith(url) and target.startswith(
+                                    "/"
+                                ):  # discard config default entries, infra and cms
+                                    print(
+                                        f"Found SVN match for {url} in {target}, faking a publish payload"
+                                    )
+                                    project = "infra"
+                                    if (
+                                        "/www/" in target
+                                    ):  # Infer project from path if possible
+                                        project = os.path.split(target)[1].replace(
+                                            ".apache.org", ""
+                                        )  # /www/commons.apache.org/foo -> commons
+                                    found_match = True
+                                    payload = {
+                                        expected_action: {
+                                            "project": project,
+                                            "source": svn_url,
+                                            "pusher": commit.get("committer", "root"),
+                                            "type": "svn",
+                                            "target": target.rstrip("/"),  # strip trailing slashes from svnwcsub.conf
+                                        }
                                     }
-                                }
+                                    break
+                            if found_match:
+                                break  # Found the most specific match, break!
+
             if expected_action in payload:
                 project = payload[expected_action].get("project")
                 source = payload[expected_action].get("source")
@@ -383,7 +394,7 @@ async def listen(deployer: deploy):
                             "Extending deployment [%s] dir %s with subdir %s"
                             % (deploytype, deploydir, subdir),
                         )
-                        deploydir = os.path.join(deploydir, subdir)                        
+                        deploydir = os.path.join(deploydir, subdir)
                     print(
                         "Found deploy [%s] delivery for %s, deploying as %s"
                         % (deploytype, project, deploydir),
