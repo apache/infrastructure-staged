@@ -249,9 +249,9 @@ class deploy(threading.Thread):
         threading.Thread.__init__(self)
         self.svnconfig: dict = {}
         if PUBLISH:
-            print(f"Publish mode enabled. Websites will be published under {ROOT_DIR}/$project.apache.org/")
+            print(f"Publish mode enabled (host is tlpserver). Websites will be published under {ROOT_DIR}/$project.apache.org/")
         else:
-            print(f"Staging mode enabled. Websites will be published under {ROOT_DIR}/$project/ (NOT $project.apache.org)")
+            print(f"Staging mode enabled (host is not tlpserver). Websites will be published under {ROOT_DIR}/$project/ (NOT $project.apache.org)")
         if os.path.isfile(SVNWCSUB_CFGFILE):
             print("Found svnwcsub.conf file, loading for svn tracking")
             self._svnwcsub = configparser.ConfigParser()
