@@ -13,6 +13,7 @@ import time
 
 import asfpy.pubsub
 import asfpy.syslog
+import asfpy.whoami
 
 print = asfpy.syslog.Printer(stdout=True)
 import requests
@@ -34,7 +35,8 @@ CHECKOUT_TIMEOUT = (
     300  # Time out if git operation does not finish within five minutes (300 seconds)
 )
 # Staging on staging-vm, publishing on tlp-* boxes
-PUBLISH = True if "tlp" in socket.gethostname() else False
+WHOAMI = asfpy.whoami.whoami()
+PUBLISH = True if "tlpserver" in WHOAMI else False
 
 # Fastly purge key, only present on tlp-he2
 FASTLY_SVC_ID = "4bDOjcgRkWOJy4OpyuG8yT"
@@ -249,9 +251,9 @@ class deploy(threading.Thread):
         threading.Thread.__init__(self)
         self.svnconfig: dict = {}
         if PUBLISH:
-            print(f"Publish mode enabled (host is tlpserver). Websites will be published under {ROOT_DIR}/$project.apache.org/")
+            print(f"Publish mode enabled ({WHOAMI} is a tlpserver). Websites will be published under {ROOT_DIR}/$project.apache.org/")
         else:
-            print(f"Staging mode enabled (host is not tlpserver). Websites will be published under {ROOT_DIR}/$project/ (NOT $project.apache.org)")
+            print(f"Staging mode enabled ({WHOAMI} is not a tlpserver). Websites will be published under {ROOT_DIR}/$project/ (NOT $project.apache.org)")
         if os.path.isfile(SVNWCSUB_CFGFILE):
             print("Found svnwcsub.conf file, loading for svn tracking")
             self._svnwcsub = configparser.ConfigParser()
