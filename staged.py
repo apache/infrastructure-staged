@@ -84,7 +84,7 @@ def checkout_git_repo(path, source, branch):
         print("Could not check out %s: operation timed out" % source)
 
 
-def do_git_pull(path, branch):
+def do_git_pull(path, branch, source):
     """Does a simple git pull (through fetch+reset) from a deploy dir, syslog if it works or not"""
     os.chdir(path)
     # Fetch new changes into .git/ ...
@@ -234,7 +234,7 @@ def deploy_site(deploydir, source, branch, committer, deploytype="website"):
         # Or it could be all good, just needs a pull
         else:
             print("Source and branch match on-disk, doing git pull")
-            do_git_pull(path, branch)
+            do_git_pull(path, branch, source)
     # Otherwise, do fresh checkout if git, complain (for now) if svn
     else:
         if deploytype == "svn":
