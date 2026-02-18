@@ -4,6 +4,8 @@ import os
 import subprocess
 import json
 import time
+import yaml
+import yaml.error
 
 MAX_NESTING = 4
 
@@ -104,8 +106,11 @@ def scan_for_sites(path, publish_settings, childof=None, nest=1):
             if gitroot and gitbranch:
                 yamlpath = os.path.join(website_path, ".asf.yaml")
                 if os.path.exists(yamlpath):
-                    asfyaml = open(yamlpath, "r").read()
-                    uses_asf_yaml = "publish:" in asfyaml.replace("\r", "").split("\n")
+                    try:
+                        asfyaml = yaml.safe_load(open(yamlpath, "r"))
+                        uses_asf_yaml = "publish" in asfyaml
+                    except yaml.error.YAMLError as e:
+                        pass  # broken .asf.yaml
 
         # Log if root web site URL or sub that has a VCS root
         if childof:
