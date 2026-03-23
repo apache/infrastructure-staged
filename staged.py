@@ -22,6 +22,7 @@ import requests
 SVN_UUIDS = {
     "13f79535-47bb-0310-9956-ffa450edef68": "https://svn-master.apache.org/repos/asf",
     "90ea9780-b833-de11-8433-001ec94261de": "https://svn-master.apache.org/repos/infra",
+    "0d268c88-bc11-4956-87df-91683dc98e59": "https://dist.apache.org/repos/dist",
 }
 
 PUBSUB_URL = "https://pubsub.apache.org:2070/"
