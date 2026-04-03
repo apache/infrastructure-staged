@@ -384,6 +384,7 @@ async def listen(deployer: deploy):
 
                 # Staging dir
                 deploydir = project
+                root_deployment = deploydir  # Logged for purges
                 if profile:
                     deploydir += "-%s" % profile
                 # Or if publishing, use the tlp-server naming format
@@ -394,9 +395,8 @@ async def listen(deployer: deploy):
                         hostdir = payload[expected_action].get("target")
                         if hostdir:
                             deploydir = hostdir  # Only if not empty value
-
+                
                 if deploydir and source and branch:
-                    root_deployment = deploydir  # Logged for purges
                     if subdir and re.match(r"^[-._a-zA-Z0-9/]+$", subdir):
                         print(
                             "Extending deployment [%s] dir %s with subdir %s"
