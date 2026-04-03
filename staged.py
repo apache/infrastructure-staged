@@ -383,13 +383,16 @@ async def listen(deployer: deploy):
                     deploytype = "website"  # blog or website, nothing in between!
 
                 # Staging dir
-                deploydir = project
+                deploydir = project 
                 root_deployment = deploydir  # Logged for purges
                 if profile:
                     deploydir += "-%s" % profile
                 # Or if publishing, use the tlp-server naming format
                 if PUBLISH:
                     deploydir = "%s.apache.org" % project
+                root_deployment = deploydir  # Logged for purges
+                
+                if PUBLISH:
                     # Hardcoded hostnames (aoo etc):
                     if "target" in payload[expected_action]:
                         hostdir = payload[expected_action].get("target")
