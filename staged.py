@@ -305,7 +305,7 @@ def common_parent(files: list):
     top_directory = "/"
     for filename in files:
         if top_directory == "/" or not filename.startswith(top_directory):
-            bits = os.path.split(filename)
+            bits = os.path.normpath(filename).split(os.sep)
             for i in range(0, len(bits) - 1):
                 tmp_path = os.path.join(bits[0], *bits[1:i]) + "/"
                 if all(fp.startswith(tmp_path) for fp in files):
@@ -348,7 +348,7 @@ async def listen(deployer: deploy):
                                     if (
                                         "/www/" in target
                                     ):  # Infer project from path if possible
-                                        project = os.path.split(target)[1].replace(
+                                        project = os.path.normpath(target).split(os.sep)[2].replace(
                                             ".apache.org", ""
                                         )  # /www/commons.apache.org/foo -> commons
                                     found_match = True
