@@ -351,6 +351,7 @@ async def listen(deployer: deploy):
                                         project = os.path.normpath(target).split(os.sep)[2].replace(
                                             ".apache.org", ""
                                         )  # /www/commons.apache.org/foo -> commons
+                                        print(f"Inferred project: {project} from path: {target}")
                                     found_match = True
                                     payload = {
                                         expected_action: {
