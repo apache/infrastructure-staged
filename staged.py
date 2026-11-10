@@ -72,10 +72,13 @@ def checkout_git_repo(path, source, branch):
         print("Doing recursive delete of path %s" % path)
         shutil.rmtree(path)
     # Try to pull in the repo, if it fails, just log it for now.
+    # Only the latest commit is needed for serving the site. Without --depth, the whole history of the
+    # branch is cloned, and for a web site branch with a long history of generated content, that can
+    # take longer than CHECKOUT_TIMEOUT.
     print("Checking out %s (%s) as %s..." % (source, branch, path))
     try:
         subprocess.check_output(
-            (GIT_CMD, "clone", "-b", branch, "--single-branch", source, path),
+            (GIT_CMD, "clone", "--depth", "1", "-b", branch, "--single-branch", source, path),
             timeout=CHECKOUT_TIMEOUT,
         )
         print("Checkout worked!")
@@ -89,16 +92,18 @@ def do_git_pull(path, branch, source):
     """Does a simple git pull (through fetch+reset) from a deploy dir, syslog if it works or not"""
     os.chdir(path)
     # Fetch new changes into .git/ ...
+    # Only fetch the latest commit (--depth 1), the history isn't needed for serving the site. This also
+    # turns existing full-history checkouts into shallow ones.
     try:
         subprocess.check_output(
-            (GIT_CMD, "fetch", "origin", branch),
+            (GIT_CMD, "fetch", "--depth", "1", "origin", branch),
             stderr=subprocess.STDOUT,
             timeout=CHECKOUT_TIMEOUT,
         )
         print("Successfully completed `git fetch` into %s" % path)
     except subprocess.CalledProcessError as e:
         print(
-            "Command `git fetch origin %s` failed in %s: %s" % (branch, path, e.output),
+            "Command `git fetch --depth 1 origin %s` failed in %s: %s" % (branch, path, e.output),
         )
         return
     except subprocess.TimeoutExpired:
